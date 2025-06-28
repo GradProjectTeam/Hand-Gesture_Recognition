@@ -7,43 +7,47 @@ from mediapipe.tasks.python.vision.core.vision_task_running_mode import VisionTa
 from mediapipe.tasks.python.vision.gesture_recognizer import GestureRecognizerResult
 from mediapipe.tasks.python.core.base_options import BaseOptions
 
-# Global variable to store the latest hand landmarks
+# Global variables to store latest results
 latest_hand_landmarks = None
+latest_gesture_label = ""
 
 
 def on_result(result: GestureRecognizerResult, output_image: any, timestamp_ms: int):
     """
     Callback function for processing gesture recognition results.
     """
-    global latest_hand_landmarks
+    global latest_hand_landmarks, latest_gesture_label
 
     if result.gestures:
         gesture = result.gestures[0][0].category_name
+        latest_gesture_label = gesture
         print(f"Detected gesture: {gesture}")
 
         # Map gestures to custom actions
-        if gesture == "Open_Palm":                     # 👋
+        if gesture == "Open_Palm":
             print("📞 Simulating: Answer Call")
-        elif gesture == "Thumb_Up":                    # 👍
+        elif gesture == "Thumb_Up":
             print("🔇 Simulating: Hang Up / Mute")
-        elif gesture == "Victory":                     # ✌️
+        elif gesture == "Victory":
             print("🎵 Simulating: Play Music")
-        elif gesture == "Closed_Fist":                 # ✊
+        elif gesture == "Closed_Fist":
             print("✊ Simulating: Closed Fist Action")
-        elif gesture == "Pointing_Up":                 # ☝️
+        elif gesture == "Pointing_Up":
             print("☝️ Simulating: Pointing Up Action")
-        elif gesture == "Thumb_Down":                  # 👎
+        elif gesture == "Thumb_Down":
             print("👎 Simulating: Thumbs Down Action")
-        elif gesture == "ILoveYou":                    # 🤟
+        elif gesture == "ILoveYou":
             print("❤️ Simulating: Love Action")
         else:
-            # Handle unrecognized gesture
             print("❓ Unrecognized gesture, label: Unknown")
+    else:
+        latest_gesture_label = ""  # No gesture detected
 
-    # Store the latest hand landmarks
+    # Store landmarks
     latest_hand_landmarks = result.hand_landmarks if result else None
 
 
+# Set up gesture recognizer
 options = GestureRecognizerOptions(
     base_options=BaseOptions(model_asset_path="gesture_recognizer.task"),
     running_mode=VisionTaskRunningMode.LIVE_STREAM,
@@ -55,10 +59,8 @@ options = GestureRecognizerOptions(
 )
 
 recognizer = GestureRecognizer.create_from_options(options)
-# the Gesture Recognizer will invoke its result listener with the recognition result every time it has finished processing an input frame. 
-# If the recognition function is called when the Gesture Recognizer task is busy processing another frame, the task will ignore the new input frame.
 
-
+# Start capturing from webcam
 cap = cv2.VideoCapture(0)
 if not cap.isOpened():
     raise IOError("❌ Cannot open webcam")
@@ -68,20 +70,37 @@ while True:
     if not success:
         continue
 
+    # Convert frame to RGB
     rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
     timestamp_ms = int(time.time() * 1000)
 
+    # Convert to MediaPipe Image
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
 
+    # Perform gesture recognition
     recognizer.recognize_async(mp_image, timestamp_ms)
 
-    # Draw hand landmarks on the frame
-    if latest_hand_landmarks:    
+    # Draw landmarks if available
+    if latest_hand_landmarks:
         frame = draw_hand_landmarks(frame, latest_hand_landmarks)
 
+    # Draw gesture label
+    if latest_gesture_label:
+        cv2.putText(
+            frame,
+            f"Gesture: {latest_gesture_label}",
+            (10, 30),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            1,
+            (0, 255, 0),
+            2,
+            cv2.LINE_AA,
+        )
+
+    # Display the frame
     cv2.imshow("Driver Gesture Recognition", frame)
 
-    if cv2.waitKey(5) & 0xFF == 27:  # Escape key to break
+    if cv2.waitKey(5) & 0xFF == 27:  # Escape key to exit
         break
 
 cap.release()
